@@ -7,16 +7,19 @@
   <link rel="icon" type="image/png" href="images/logo.jpg">
   <title>Bienes Asignados</title>
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
-
+  <style>
+    /* Optional: if you want to ensure the table takes up space that might cause scroll */
+    /* .table th, .table td { white-space: nowrap; } */
+  </style>
   <script>
     const initialUserDataBA = localStorage.getItem('user');
     if (!initialUserDataBA) {
       window.location.href = 'login.html';
     } else {
       const user = JSON.parse(initialUserDataBA);
-      if (user.nombre !== 'admin') {
-
-      }
+      // The main logic for showing/hiding content or redirecting
+      // for non-admins will be handled in the DOMContentLoaded event.
+      // This initial check ensures a user is logged in.
     }
   </script>
 </head>
@@ -27,8 +30,7 @@
       <h1 class="text-success fw-bold fs-3 m-0">Inventario de bienes TI</h1>
     </div>
     <div class="position-absolute top-0 end-0 p-3"><img src="images/logo.jpg" alt="Logo"
-        style="width: 60px; height: 60px; object-fit: contain; border-radius: 10px;"></div>
-  </div>
+      style="width: 150px; height: 150px; object-fit: contain; border-radius: 10px;"></div>
   <br><br><br>
   <div class="container-fluid px-4 py-4">
     <h2 class="text-center mb-4">Bienes Asignados</h2>
@@ -36,9 +38,9 @@
         placeholder="Buscar en todos los campos..."></div>
     <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap">
       <div>
-        <a href="administrarUsuarios.html" class="btn btn-success me-2 mb-2">Admin. Usuarios</a>
-        <a href="agregarBienes.html" class="btn btn-warning me-2 mb-2">Agregar Bien</a>
-        <a href="agregarBienesExcel.html" class="btn btn-secondary me-2 mb-2">Agregar desde Excel</a>
+        <a href="administrarUsuarios.html" class="btn btn-success me-2 mb-2 admin-only-button">Admin. Usuarios</a>
+        <a href="agregarBienes.html" class="btn btn-warning me-2 mb-2 admin-only-button">Agregar Bien</a>
+        <a href="agregarBienesExcel.html" class="btn btn-secondary me-2 mb-2 admin-only-button">Agregar desde Excel</a>
       </div>
       <div>
         <a href="Historial.html" class="btn btn-dark me-2 mb-2">Ver Historial Cambios</a>
@@ -56,7 +58,8 @@
         <option value="usuario_responsable">Usuario Responsable</option>
       </select>
     </div>
-    <div class="table-responsive" style="max-height: 70vh;">
+    <!-- MODIFIED: Added overflow-x: scroll; -->
+    <div class="table-responsive" style="max-height: 70vh; overflow-x: scroll;">
       <table class="table table-bordered table-hover align-middle text-center">
         <thead class="table-success">
           <tr>
@@ -83,6 +86,8 @@
         </tbody>
       </table>
     </div>
+    <!-- ADDED: Pagination Controls Container -->
+    <div id="paginationControls" class="d-flex justify-content-center mt-3"></div>
   </div>
 
   <div id="editModal" class="modal fade" tabindex="-1">
@@ -148,10 +153,9 @@
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.10.0/firebase-app.js";
     import { getFirestore, collection, getDocs, doc, updateDoc, deleteDoc, setDoc, getDoc, Timestamp, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.10.0/firebase-firestore.js";
-    // No direct Bootstrap import here if relying on the global from bootstrap.bundle.js
 
     const firebaseConfig = {
-      apiKey: "AIzaSyBqLeHhOIlDrHCDqovuvmX5fEQIDccC_UI",
+      apiKey: "AIzaSyBqLeHhOIlDrHCDqovuvmX5fEQIDccC_UI", // Consider using environment variables for API keys
       authDomain: "inventario-login-4137e.firebaseapp.com",
       projectId: "inventario-login-4137e",
       storageBucket: "inventario-login-4137e.appspot.com",
@@ -162,11 +166,15 @@
     const app = initializeApp(firebaseConfig);
     const db = getFirestore(app);
 
-    let todosLosBienes = [];
-    let bienesMostrados = [];
-    let editModalInstance = null; // Initialize to null
+    let todosLosBienes = []; // All bienes from Firestore
+    let bienesFiltradosYSorteados = []; // Bienes after search and sort, before pagination
+    let editModalInstance = null;
     let administradoresDeLaboratorio = [];
 
+    // Pagination variables
+    const ITEMS_PER_PAGE = 10;
+    let currentPage = 1;
+    let isAdminGlobal = false; // To store admin status globally within the module
 
     async function fetchBienes() {
       const bienesTableBody = document.getElementById("bienesTable");
@@ -175,60 +183,92 @@
         const bienesSnapshot = await getDocs(collection(db, "mobiliario"));
         todosLosBienes = bienesSnapshot.docs.map(docSnap => ({ id: docSnap.id, ...docSnap.data() }));
 
-        // Cargar la información de todos los usuarios que tienen el campo 'laboratorio'
         const usuariosSnapshot = await getDocs(collection(db, "usuarios"));
         administradoresDeLaboratorio = usuariosSnapshot.docs.filter(docSnap => docSnap.data().laboratorio && docSnap.data().laboratorio.length > 0)
           .map(docSnap => ({
             nombre: docSnap.data().nombre,
-            laboratorios: Array.isArray(docSnap.data().laboratorio) ? docSnap.data().laboratorio.map(lab => String(lab)) : [String(docSnap.data().laboratorio)] // Asegurar que los laboratorios sean strings para comparar
+            laboratorios: Array.isArray(docSnap.data().laboratorio) ? docSnap.data().laboratorio.map(lab => String(lab)) : [String(docSnap.data().laboratorio)]
           }));
 
-        filterAndSortBienes();
+        applyFiltersAndSort(); // This will then call renderPaginatedView
       } catch (error) {
         console.error("Error al obtener los bienes o usuarios:", error);
         bienesTableBody.innerHTML = '<tr><td colspan="14" class="text-danger">Error al cargar. Revise la consola.</td></tr>';
+        document.getElementById("paginationControls").innerHTML = ""; // Clear pagination on error
       }
     }
 
-    function filterAndSortBienes() {
-      let bienesFiltrados = [...todosLosBienes];
+    function applyFiltersAndSort() {
+      let tempBienes = [...todosLosBienes];
       const searchTerm = document.getElementById("searchInput").value.toLowerCase();
       if (searchTerm) {
-        bienesFiltrados = bienesFiltrados.filter(bien =>
+        tempBienes = tempBienes.filter(bien =>
           Object.values(bien).some(val => String(val).toLowerCase().includes(searchTerm))
         );
       }
       const sortField = document.getElementById("sortField").value;
       if (sortField) {
-        bienesFiltrados.sort((a, b) => {
+        tempBienes.sort((a, b) => {
           const valA = (a[sortField] || "").toString().toLowerCase();
           const valB = (b[sortField] || "").toString().toLowerCase();
           if ((sortField === "fecha" || sortField === "fecha_movimiento") && valA && valB) {
-            try { // Add try-catch for invalid date strings
-              return new Date(valA) - new Date(valB);
+            try {
+              const dateA = new Date(valA);
+              const dateB = new Date(valB);
+              if (isNaN(dateA.valueOf()) || isNaN(dateB.valueOf())) return 0; // Handle invalid dates
+              return dateA - dateB;
             } catch (e) { return 0; }
           }
           return valA.localeCompare(valB);
         });
       }
-      bienesMostrados = bienesFiltrados;
-      renderBienes();
+      bienesFiltradosYSorteados = tempBienes;
+      currentPage = 1; // Reset to first page whenever filters/sort change
+      renderPaginatedView();
     }
 
-    function renderBienes() {
+    function renderPaginatedView() {
+      const totalItems = bienesFiltradosYSorteados.length;
+      const totalPages = Math.ceil(totalItems / ITEMS_PER_PAGE);
+      
+      if (currentPage > totalPages && totalPages > 0) {
+        currentPage = totalPages;
+      }
+      if (currentPage < 1 && totalPages > 0) {
+          currentPage = 1;
+      }
+       if (totalPages === 0 && totalItems > 0) { // If filtering results in 0 pages but there were items
+        currentPage = 1; // Reset to 1, renderBienesEnTabla will show "no results"
+      } else if (totalPages === 0 && totalItems === 0) {
+         currentPage = 1; // No items at all
+      }
+
+
+      const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
+      const endIndex = startIndex + ITEMS_PER_PAGE;
+      const bienesParaMostrarEstaPagina = bienesFiltradosYSorteados.slice(startIndex, endIndex);
+
+      renderBienesEnTabla(bienesParaMostrarEstaPagina);
+      renderPaginationControls(totalPages);
+    }
+
+    function renderBienesEnTabla(bienes) {
       const bienesTableBody = document.getElementById("bienesTable");
-      if (bienesMostrados.length === 0) {
-        bienesTableBody.innerHTML = '<tr><td colspan="14">No se encontraron bienes.</td></tr>';
+      if (bienesFiltradosYSorteados.length === 0 && document.getElementById("searchInput").value === "" && todosLosBienes.length === 0) {
+        bienesTableBody.innerHTML = '<tr><td colspan="14">No hay bienes registrados.</td></tr>';
+        return;
+      }
+      if (bienes.length === 0) {
+        bienesTableBody.innerHTML = '<tr><td colspan="14">No se encontraron bienes con los filtros aplicados.</td></tr>';
         return;
       }
 
-      bienesTableBody.innerHTML = bienesMostrados.map(bien => {
+      bienesTableBody.innerHTML = bienes.map(bien => {
         const fechaBien = bien.fecha ? new Date(bien.fecha + 'T00:00:00').toLocaleDateString() : "N/A";
         const fechaMov = bien.fecha_movimiento ? new Date(bien.fecha_movimiento + 'T00:00:00').toLocaleDateString() : "NA";
         let usuarioResponsableMostrar = bien.usuario_responsable || "N/A";
-        const laboratorioDelBien = String(bien.laboratorio); // Asegurar que el laboratorio del bien sea string
+        const laboratorioDelBien = String(bien.laboratorio);
 
-        // Buscar un administrador para el laboratorio del bien
         const administradorEncontrado = administradoresDeLaboratorio.find(admin =>
           admin.laboratorios.includes(laboratorioDelBien)
         );
@@ -236,6 +276,11 @@
         if (administradorEncontrado) {
           usuarioResponsableMostrar = administradorEncontrado.nombre;
         }
+
+        const actionButtons = isAdminGlobal ? `
+          <button class="btn btn-sm btn-info me-1" onclick="abrirModalEditar('${bien.id}')">Editar</button>
+          <button class="btn btn-sm btn-danger" onclick="eliminarBienConfirm('${bien.id}')">Eliminar</button>
+        ` : '<span class="text-muted fst-italic">N/A</span>'; // Display N/A for non-admins
 
         return `
       <tr>
@@ -252,14 +297,86 @@
         <td>${bien.area_destino || "NA"}</td>
         <td>${fechaMov}</td>
         <td>${bien.autorizo_movimiento || "NA"}</td>
-        <td>
-          <button class="btn btn-sm btn-info me-1" onclick="abrirModalEditar('${bien.id}')">Editar</button>
-          <button class="btn btn-sm btn-danger" onclick="eliminarBienConfirm('${bien.id}')">Eliminar</button>
-        </td>
+        <td>${actionButtons}</td>
       </tr>`;
       }).join('');
     }
+
+    function renderPaginationControls(totalPages) {
+      const paginationContainer = document.getElementById("paginationControls");
+      if (totalPages <= 1) {
+        paginationContainer.innerHTML = "";
+        return;
+      }
+
+      let paginationHTML = `<nav aria-label="Page navigation"><ul class="pagination">`;
+
+      paginationHTML += `<li class="page-item ${currentPage === 1 ? 'disabled' : ''}">
+                          <a class="page-link" href="#" aria-label="Previous" onclick="goToPage(${currentPage - 1}); return false;">
+                            <span aria-hidden="true">«</span>
+                          </a>
+                        </li>`;
+      
+      let startPage = Math.max(1, currentPage - 2);
+      let endPage = Math.min(totalPages, currentPage + 2);
+
+      if (currentPage <= 3) {
+          endPage = Math.min(totalPages, 5);
+      }
+      if (currentPage > totalPages - 3 && totalPages > 5) {
+          startPage = Math.max(1, totalPages - 4);
+      }
+
+      if (startPage > 1) {
+          paginationHTML += `<li class="page-item"><a class="page-link" href="#" onclick="goToPage(1); return false;">1</a></li>`;
+          if (startPage > 2) {
+              paginationHTML += `<li class="page-item disabled"><span class="page-link">...</span></li>`;
+          }
+      }
+
+      for (let i = startPage; i <= endPage; i++) {
+        paginationHTML += `<li class="page-item ${i === currentPage ? 'active' : ''}">
+                            <a class="page-link" href="#" onclick="goToPage(${i}); return false;">${i}</a>
+                          </li>`;
+      }
+
+      if (endPage < totalPages) {
+          if (endPage < totalPages - 1) {
+              paginationHTML += `<li class="page-item disabled"><span class="page-link">...</span></li>`;
+          }
+          paginationHTML += `<li class="page-item"><a class="page-link" href="#" onclick="goToPage(${totalPages}); return false;">${totalPages}</a></li>`;
+      }
+
+      paginationHTML += `<li class="page-item ${currentPage === totalPages ? 'disabled' : ''}">
+                          <a class="page-link" href="#" aria-label="Next" onclick="goToPage(${currentPage + 1}); return false;">
+                            <span aria-hidden="true">»</span>
+                          </a>
+                        </li>`;
+      paginationHTML += `</ul></nav>`;
+      paginationContainer.innerHTML = paginationHTML;
+    }
+
+    window.goToPage = function(pageNumber) {
+      const targetPage = parseInt(pageNumber, 10);
+      if (isNaN(targetPage)) return;
+
+      const totalPages = Math.ceil(bienesFiltradosYSorteados.length / ITEMS_PER_PAGE);
+      if (targetPage >= 1 && targetPage <= totalPages) {
+        currentPage = targetPage;
+        renderPaginatedView();
+      }
+       // Prevent default link behavior if called from an <a> tag
+      if (event && typeof event.preventDefault === 'function') {
+        event.preventDefault();
+      }
+    }
+
+
     window.abrirModalEditar = function (id) {
+      if (!isAdminGlobal) {
+        alert("Acción no permitida.");
+        return;
+      }
       const bien = todosLosBienes.find(b => b.id === id);
       if (!bien) { alert("Error: Bien no encontrado."); return; }
       document.getElementById("editId").value = bien.id;
@@ -273,21 +390,25 @@
       document.getElementById("editObservaciones").value = bien.observaciones || "";
       document.getElementById("editUsuarioResponsable").value = bien.usuario_responsable || "";
       document.getElementById("editNoEtiqueta").value = bien.no_etiqueta || "";
-      document.getElementById("editFecha").value = bien.fecha || ""; // Should be YYYY-MM-DD
+      document.getElementById("editFecha").value = bien.fecha || "";
       document.getElementById("editMovimiento").value = bien.movimiento || "NA";
       document.getElementById("editAreaOrigen").value = bien.area_origen || "";
       document.getElementById("editAreaDestino").value = bien.area_destino || "";
-      document.getElementById("editFechaMovimiento").value = bien.fecha_movimiento || ""; // Should be YYYY-MM-DD
+      document.getElementById("editFechaMovimiento").value = bien.fecha_movimiento || "";
       document.getElementById("editAutorizoMovimiento").value = bien.autorizo_movimiento || "";
 
       if (editModalInstance) {
         editModalInstance.show();
       } else {
-        console.warn("Modal instance not ready when trying to show.");
-        // Fallback or re-initialize if necessary, though DOMContentLoaded should handle it.
         if (typeof bootstrap !== 'undefined' && bootstrap.Modal) {
-          editModalInstance = new bootstrap.Modal(document.getElementById('editModal'));
-          editModalInstance.show();
+          const modalElement = document.getElementById('editModal');
+          if (modalElement) {
+             editModalInstance = new bootstrap.Modal(modalElement);
+             editModalInstance.show();
+          } else {
+            console.error("Modal HTML element 'editModal' not found for instantiation.");
+            alert("No se puede abrir la ventana de edición.");
+          }
         } else {
           alert("No se puede abrir la ventana de edición. Bootstrap no está cargado.");
         }
@@ -295,6 +416,10 @@
     }
 
     window.guardarCambios = async function () {
+      if (!isAdminGlobal) {
+        alert("Acción no permitida.");
+        return;
+      }
       if (!editModalInstance) {
         alert("Error: La instancia del modal no está lista para guardar.");
         return;
@@ -337,7 +462,7 @@
         await setDoc(doc(db, "historial", historialDocId), historialEntry);
 
         alert("Bien actualizado y cambio registrado en historial.");
-        editModalInstance.hide(); // Use the instance to hide
+        editModalInstance.hide();
         fetchBienes();
       } catch (error) {
         console.error("Error al guardar cambios:", error);
@@ -346,6 +471,10 @@
     }
 
     window.eliminarBienConfirm = async function (id) {
+      if (!isAdminGlobal) {
+        alert("Acción no permitida.");
+        return;
+      }
       if (!confirm("¿Estás seguro de eliminar este bien? Esta acción es irreversible desde esta vista.")) return;
 
       const bienRef = doc(db, "mobiliario", id);
@@ -380,64 +509,59 @@
     }
 
     document.addEventListener('DOMContentLoaded', () => {
-      const user = JSON.parse(localStorage.getItem('user'));
-      let isAdmin = false;
-      if (user && user.nombre) {
-        if (user.nombre === 'admin') {
-          isAdmin = true;
-          document.body.style.display = 'block';
-        } else {
-          // If not admin, decide what to do.
-          // For example, redirect or hide admin-specific controls.
-          // For now, let's assume they can view but not get modal functionality
-          // or admin buttons if the page is shared.
-          // If the page is strictly admin, the inline script should have redirected.
-          console.warn("Non-admin user on admin page. Modal functionality might be limited.");
-          document.body.style.display = 'block'; // Still show body for viewing
-          // Potentially hide admin buttons here if the page is shared
-          // document.querySelectorAll('.admin-only-button').forEach(btn => btn.style.display = 'none');
+      const userData = localStorage.getItem('user');
+      if (!userData) {
+        window.location.href = 'login.html';
+        return;
+      }
+      const user = JSON.parse(userData);
+      isAdminGlobal = user && user.nombre === 'admin';
+      
+      document.body.style.display = 'block'; // Show body for all logged-in users
+
+      if (!isAdminGlobal) {
+        console.warn("Usuario no administrador. Algunas funcionalidades estarán restringidas.");
+        document.querySelectorAll('.admin-only-button').forEach(btn => btn.style.display = 'none');
+        // The modal itself will still be in the DOM, but opening and saving will be restricted by isAdminGlobal checks.
+        const modalFooter = document.querySelector('#editModal .modal-footer');
+        if (modalFooter) {
+            const saveButton = modalFooter.querySelector('.btn-primary');
+            if(saveButton) saveButton.style.display = 'none'; // Hide save button for non-admins
         }
       } else {
-        window.location.href = 'login.html'; // Fallback
-        return; // Don't proceed if no user
+         document.querySelectorAll('.admin-only-button').forEach(btn => btn.style.display = 'inline-block'); // or 'block' or ''
       }
 
-      // Initialize Bootstrap Modal only if it's defined
-      // This should be after document.body.style.display = 'block' to ensure modal elements are visible
+
       if (typeof bootstrap !== 'undefined' && bootstrap.Modal) {
         try {
           const modalElement = document.getElementById('editModal');
           if (modalElement) {
             editModalInstance = new bootstrap.Modal(modalElement);
           } else {
-            console.error("Modal HTML element with ID 'editModal' not found.");
+            console.error("Modal HTML element 'editModal' not found.");
           }
         } catch (e) {
           console.error("Error initializing Bootstrap Modal:", e);
-          // alert("Hubo un problema al inicializar la ventana de edición.");
         }
       } else {
-        console.error("Bootstrap Modal is not defined. Bootstrap JS might not be loaded correctly or in time.");
-        // alert("Funcionalidad de edición no disponible. Bootstrap no cargó correctamente.");
+        console.warn("Bootstrap Modal is not defined. Editing functionality might be affected if Bootstrap JS is not loaded.");
       }
 
-      fetchBienes(); // Fetch data regardless of modal init for viewing
-      document.getElementById('searchInput').addEventListener('input', filterAndSortBienes);
-      document.getElementById('sortField').addEventListener('change', filterAndSortBienes);
+      fetchBienes();
+      document.getElementById('searchInput').addEventListener('input', applyFiltersAndSort);
+      document.getElementById('sortField').addEventListener('change', applyFiltersAndSort);
 
       const cerrarSesionButton = document.getElementById('cerrarSesionBtn');
       if (cerrarSesionButton) {
         cerrarSesionButton.addEventListener('click', () => {
           localStorage.removeItem('user');
           window.location.href = 'login.html';
-          window.location.reload(true); // Intento de recarga forzada
-
+          // window.location.reload(true); // This can be aggressive, consider if truly needed
         });
       }
     });
   </script>
-  <!-- Ensure this is the Bootstrap Bundle JS and it's loaded -->
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 </body>
-
 </html>
