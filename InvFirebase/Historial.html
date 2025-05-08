@@ -133,6 +133,14 @@
         }
     };
 
+    document.getElementById("cerrarSesionBtn").addEventListener("click", function () {
+      // Eliminar datos del usuario guardados
+      localStorage.removeItem("user")
+
+      // Redirigir al login
+      window.location.href = "login.html";
+    });
+
     document.getElementById('searchHistorialInput').addEventListener('input', () => {
         const searchTerm = document.getElementById('searchHistorialInput').value.toLowerCase();
         const filtered = todosLosHistoriales.filter(h => 
