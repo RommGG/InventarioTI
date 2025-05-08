@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="icon" type="image/png" href="images/logo.jpg">
+    <title>Historial de Cambios de Bienes</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+</head>
+<script>
+    const userData = localStorage.getItem('user');
+    if (!userData) {
+        window.location.href = 'login.html';
+    } else {
+        const user = JSON.parse(userData);
+        if (user.nombre !== 'admin') {
+            window.location.href = 'histLabs.html';
+        } else {
+            document.body.style.display = 'block'; // Mostrar contenido si es admin
+        }
+    }
+</script>
+
+<body class="bg-light">
+    <div class="container bg-white p-4 mt-5 rounded shadow-sm">
+        <div class="d-flex justify-content-between align-items-center mb-2">
+            <div>
+                <h1 class="text-dark m-0">Historial de Cambios</h1>
+                <p id="nombreUsuario" class="text-muted fs-5 m-0"></p>
+            </div>
+            <img src="images/logo.jpg" alt="Logo" style="width: 110px; height: auto;" class="rounded">
+        </div>
+        <div class="d-flex justify-content-between mb-4">
+            <a href="index.html" class="btn btn-outline-primary">Volver a Inventario</a>
+        </div>
+        <div class="mb-3"><input type="text" id="searchHistorialInput" class="form-control"
+                placeholder="Buscar en historial..."></div>
+        <table class="table table-striped table-bordered table-hover">
+            <thead class="table-dark">
+                <tr>
+                    <th>Fecha Evento</th>
+                    <th>Tipo Cambio</th>
+                    <th>Descripción Bien</th>
+                    <th>Serie</th>
+                    <th>Realizado Por</th>
+                    <th>Detalle Cambio</th>
+                </tr>
+            </thead>
+            <tbody id="historialTable"></tbody>
+        </table>
+    </div>
+    <div id="mensajeExitoRestauracion"
+        class="position-fixed top-50 start-50 translate-middle bg-success text-white px-5 py-4 rounded shadow-lg fs-4 fw-bold d-none text-center"
+        style="z-index: 1050;"></div>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.10.0/firebase-app.js";
+        import { getFirestore, collection, getDocs, doc, setDoc, getDoc, query, orderBy, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.10.0/firebase-firestore.js";
+
+        const firebaseConfig = { /* ... your config ... */
+            apiKey: "AIzaSyBqLeHhOIlDrHCDqovuvmX5fEQIDccC_UI",
+            authDomain: "inventario-login-4137e.firebaseapp.com",
+            projectId: "inventario-login-4137e",
+            storageBucket: "inventario-login-4137e.appspot.com",
+            messagingSenderId: "695847381869",
+            appId: "1:695847381869:web:33401d4af8b3237842c864",
+            measurementId: "G-NVS9QSLHNH"
+        };
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+
+        let todosLosHistoriales = [];
+
+        function formatDateTime(timestamp) {
+            if (!timestamp || !timestamp.toDate) return "N/A";
+            const d = timestamp.toDate();
+            return `${d.toLocaleDateString()} ${d.toLocaleTimeString()}`;
+        }
+        function showRestorationMessage(message) {
+            const el = document.getElementById("mensajeExitoRestauracion");
+            el.textContent = message;
+            el.classList.remove("d-none");
+            setTimeout(() => el.classList.add("d-none"), 3000);
+        }
+
+        async function fetchHistorial() {
+            const tableBody = document.getElementById("historialTable");
+            tableBody.innerHTML = `<tr><td colspan="7">Cargando historial...</td></tr>`;
+            try {
+                const q = query(collection(db, "historial"), orderBy("fecha_evento_historial", "desc"));
+                const snapshot = await getDocs(q);
+                todosLosHistoriales = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+                renderHistorial(todosLosHistoriales);
+            } catch (e) {
+                console.error("Error fetching historial:", e);
+                tableBody.innerHTML = `<tr><td colspan="7" class="text-danger">Error al cargar historial.</td></tr>`;
+            }
+        }
+
+        function renderHistorial(entries) {
+            const tableBody = document.getElementById("historialTable");
+            if (entries.length === 0) {
+                tableBody.innerHTML = `<tr><td colspan="7">No hay registros en el historial o que coincidan con la búsqueda.</td></tr>`;
+                return;
+            }
+            tableBody.innerHTML = entries.map(h => {
+                let badgeClass = "bg-secondary";
+                if (h.tipo_cambio === "ALTA") badgeClass = "bg-success";
+                else if (h.tipo_cambio === "EDICION") badgeClass = "bg-warning text-dark";
+                else if (h.tipo_cambio === "BAJA") badgeClass = "bg-danger";
+                return `
+            <tr>
+                <td>${formatDateTime(h.fecha_evento_historial)}</td>
+                <td><span class="badge ${badgeClass}">${h.tipo_cambio || "N/A"}</span></td>
+                <td>${h.descripcion || "N/A"}</td>
+                <td>${h.serie || "N/A"}</td>
+                <td>${h.realizado_por || "N/A"}</td>
+                <td style="max-width: 300px; overflow-wrap: break-word;">${h.descripcion_cambio || "Sin detalle."}</td>
+                
+            </tr>`;
+            }).join('');
+        }
+
+        window.restaurarBien = async function (historialDocId, originalMobiliarioId) {
+            if (!confirm("¿Restaurar el bien a este estado? Esto sobrescribirá el estado actual en el inventario o lo recreará si fue eliminado.")) return;
+            try {
+                const historialSnap = await getDoc(doc(db, "historial", historialDocId));
+                if (!historialSnap.exists()) { alert("Registro histórico no encontrado."); return; }
+
+                const { fecha_evento_historial, tipo_cambio, descripcion_cambio, realizado_por, id_mobiliario, original_id, ...dataToRestore } = historialSnap.data();
+
+                // Add/update 'ultima_modificacion' for the restored item
+                dataToRestore.ultima_modificacion = serverTimestamp();
+
+                await setDoc(doc(db, "mobiliario", originalMobiliarioId), dataToRestore);
+
+                // Log this restoration action to history as well
+                const userPerformingAction = JSON.parse(localStorage.getItem("user"))?.nombre || "Sistema";
+                const restorationHistorialEntry = {
+                    ...dataToRestore, // State of the bien after restoration
+                    original_id: originalMobiliarioId,
+                    tipo_cambio: "RESTAURACION",
+                    descripcion_cambio: `Bien '${dataToRestore.descripcion}' restaurado por ${userPerformingAction} desde historial ID: ${historialDocId}.`,
+                    realizado_por: userPerformingAction,
+                    fecha_evento_historial: serverTimestamp()
+                };
+                const newHistorialId = `${originalMobiliarioId}_${Date.now()}_RESTAURACION`;
+                await setDoc(doc(db, "historial", newHistorialId), restorationHistorialEntry);
+
+
+                showRestorationMessage(`✅ Bien (ID: ${originalMobiliarioId}) restaurado y acción registrada.`);
+                fetchHistorial(); // Refresh history to show the new RESTAURACION entry
+            } catch (e) {
+                console.error("Error al restaurar:", e);
+                alert("Error al restaurar: " + e.message);
+            }
+        };
+
+        document.getElementById("cerrarSesionBtn").addEventListener("click", function () {
+            // Eliminar datos del usuario guardados
+            localStorage.removeItem("admin")
+
+            // Redirigir al login
+            window.location.href = "login.html";
+        });
+
+        document.getElementById('searchHistorialInput').addEventListener('input', () => {
+            const searchTerm = document.getElementById('searchHistorialInput').value.toLowerCase();
+            const filtered = todosLosHistoriales.filter(h =>
+                Object.values(h).some(val => {
+                    if (val && typeof val.toDate === 'function') return formatDateTime(val).toLowerCase().includes(searchTerm);
+                    return String(val).toLowerCase().includes(searchTerm);
+                })
+            );
+            renderHistorial(filtered);
+        });
+
+        document.addEventListener('DOMContentLoaded', () => {
+            const user = JSON.parse(localStorage.getItem('user'));
+            if (user && user.nombre) document.getElementById("nombreUsuario").textContent = `Bienvenido, ${user.nombre}`;
+            fetchHistorial();
+        });
+    </script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+
+</html>
