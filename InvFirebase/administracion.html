@@ -548,12 +548,12 @@
       document.getElementById('searchInput').addEventListener('input', applyFiltersAndSort);
       document.getElementById('sortField').addEventListener('change', applyFiltersAndSort);
 
-      const cerrarSesionButton = document.getElementById('cerrarSesionBtn');
-      if (cerrarSesionButton) {
-        cerrarSesionButton.addEventListener('click', () => {
-          localStorage.removeItem('user');
-          window.location.href = 'login.html';
-          window.location.reload(true); // This can be aggressive, consider if truly needed
+      document.getElementById("cerrarSesionBtn").addEventListener("click", function () {
+          // Eliminar datos del usuario guardados
+          localStorage.removeItem("user")
+
+          // Redirigir al login
+          window.location.href = "login.html";
         });
       }
     });
