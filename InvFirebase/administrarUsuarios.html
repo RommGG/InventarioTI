@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <link rel="icon" type="image/png" href="images/logo.jpg">
+
+  <title>Administrar Usuarios</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<script>
+  const userData = localStorage.getItem('user');
+  if (!userData) {
+    window.location.href = 'login.html';
+  } else {
+    const user = JSON.parse(userData);
+    if (user.nombre !== 'admin') {
+      window.location.href = 'administrarUsuarios.html';
+    } else {
+      document.body.style.display = 'block'; // Mostrar contenido si es admin
+    }
+  }
+</script>
+
+<body class="bg-gray-100 p-6">
+  <div class="max-w-4xl mx-auto bg-white p-6 rounded-lg shadow-lg">
+
+    <div class="flex justify-between items-center mb-6">
+      <h1 class="text-3xl font-bold text-green-600">Inventario</h1>
+      <img src="images/logo.jpg" alt="Logo de ejemplo" class="w-20 h-20 object-contain rounded"/>
+    </div>
+
+    <h2 class="text-2xl font-bold mb-4">Administración de Usuarios</h2>
+
+    <div class="mb-6">
+      <h3 class="text-lg font-semibold" id="formTitulo">Agregar Usuario</h3>
+      <div class="grid grid-cols-2 gap-4 mt-2">
+        <input type="text" id="nombre" placeholder="Nombre" class="p-2 border rounded"/>
+        <input type="email" id="email" placeholder="Correo electrónico" class="p-2 border rounded"/>
+        <input type="password" id="password" placeholder="Contraseña" class="p-2 border rounded"/>
+        <input type="text" id="laboratorio" placeholder="Laboratorios (ej: A, B, 1, 2)" class="p-2 border rounded"/>
+      </div>
+      <button id="agregarBtn" class="mt-4 bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded">
+        Agregar Usuario
+      </button>
+
+      <button id="regresarBtn" class="mt-4 bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded hidden">
+        Regresar a Agregar Usuario
+      </button>
+      <button id="bienesBtn" class="mt-4 bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded">
+        <a href="administracion.html" class="btn btn-outline-primary">Ver bienes</a>
+      </button>
+
+    </div>
+
+    <h3 class="text-lg font-semibold mb-2">Usuarios Registrados</h3>
+    <table class="w-full border-collapse border border-gray-300">
+      <thead class="bg-gray-200">
+        <tr>
+          <th class="border p-2">Nombre</th>
+          <th class="border p-2">Correo</th>
+          <th class="border p-2">Laboratorios</th>
+          <th class="border p-2">Acciones</th>
+        </tr>
+      </thead>
+      <tbody id="usuariosLista"></tbody>
+    </table>
+  </div>
+
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.10.0/firebase-app.js";
+    import { getFirestore, collection, getDocs, addDoc, deleteDoc, doc, updateDoc } from "https://www.gstatic.com/firebasejs/10.10.0/firebase-firestore.js";
+
+    const firebaseConfig = {
+      apiKey: "AIzaSyBqLeHhOIlDrHCDqovuvmX5fEQIDccC_UI",
+      authDomain: "inventario-login-4137e.firebaseapp.com",
+      projectId: "inventario-login-4137e",
+      storageBucket: "inventario-login-4137e.firebasestorage.app",
+      messagingSenderId: "695847381869",
+      appId: "1:695847381869:web:33401d4af8b3237842c864",
+      measurementId: "G-NVS9QSLHNH"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const db = getFirestore(app);
+
+    let usuarioEditandoId = null;
+
+    async function cargarUsuarios() {
+      const usuariosLista = document.getElementById("usuariosLista");
+      usuariosLista.innerHTML = "";
+
+      const querySnapshot = await getDocs(collection(db, "usuarios"));
+      querySnapshot.forEach(doc => {
+        const usuario = doc.data();
+        const fila = document.createElement("tr");
+        fila.innerHTML = `
+          <td class="border p-2">${usuario.nombre}</td>
+          <td class="border p-2">${usuario.email}</td>
+          <td class="border p-2">${usuario.laboratorio ? usuario.laboratorio.join(", ") : "N/A"}</td>
+          <td class="border p-2 text-center">
+            <button onclick="editarUsuario('${doc.id}', '${usuario.nombre}', '${usuario.email}', '${usuario.laboratorio ? usuario.laboratorio.join(",") : ""}')" class="bg-yellow-500 hover:bg-yellow-600 text-white px-2 py-1 rounded">Editar</button>
+            <button onclick="eliminarUsuario('${doc.id}')" class="bg-red-500 hover:bg-red-600 text-white px-2 py-1 rounded">Eliminar</button>
+          </td>
+        `;
+        usuariosLista.appendChild(fila);
+      });
+    }
+
+    document.getElementById("agregarBtn").addEventListener("click", async () => {
+      const nombre = document.getElementById("nombre").value;
+      const email = document.getElementById("email").value;
+      const password = document.getElementById("password").value;
+      const laboratorioInput = document.getElementById("laboratorio").value;
+      const nuevosLaboratorios = laboratorioInput.split(",")
+        .map(item => item.trim())
+        .filter(item => item !== ""); // Obtener laboratorios y limpiar
+
+      if (!nombre || !email || (!usuarioEditandoId && !password)) {
+        alert("Nombre, correo y contraseña son obligatorios para agregar.");
+        return;
+      }
+
+      const todosUsuariosSnapshot = await getDocs(collection(db, "usuarios"));
+      const todosUsuarios = todosUsuariosSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
+      const esLaboratorista = nuevosLaboratorios.some(lab => !isNaN(parseInt(lab))); // Simple detección de laboratorista
+
+      if (esLaboratorista) {
+        const laboratoriosOcupados = new Set();
+        todosUsuarios.forEach(user => {
+          if (user.laboratorio && Array.isArray(user.laboratorio) && user.id !== usuarioEditandoId && user.nombre !== 'admin') {
+            user.laboratorio.forEach(lab => laboratoriosOcupados.add(String(lab).trim())); // Convertir a string y trim para comparar
+          }
+        });
+
+        const nuevosLaboratoriosLimpios = nuevosLaboratorios.map(lab => String(lab).trim()); // Limpiar los nuevos laboratorios
+        const laboratoriosInvalidos = nuevosLaboratoriosLimpios.filter(lab => laboratoriosOcupados.has(lab));
+
+        if (laboratoriosInvalidos.length > 0) {
+          alert(`Los siguientes laboratorios ya están asignados: ${laboratoriosInvalidos.join(", ")}. Por favor, elige laboratorios únicos.`);
+          return;
+        }
+      }
+
+      const userData = { nombre, email };
+      if (!usuarioEditandoId) {
+        userData.password = password;
+      }
+      userData.laboratorio = nuevosLaboratorios;
+
+      try {
+        if (usuarioEditandoId) {
+          await updateDoc(doc(db, "usuarios", usuarioEditandoId), userData);
+          alert("Usuario actualizado");
+          usuarioEditandoId = null;
+          document.getElementById("agregarBtn").innerText = "Agregar Usuario";
+          document.getElementById("regresarBtn").classList.add("hidden");
+          document.getElementById("formTitulo").innerText = "Agregar Usuario";
+        } else {
+          await addDoc(collection(db, "usuarios"), userData);
+          alert("Usuario agregado");
+        }
+
+        limpiarFormulario();
+        cargarUsuarios();
+      } catch (error) {
+        console.error("Error al agregar o actualizar usuario:", error);
+        alert("Hubo un error al guardar el usuario.");
+      }
+    });
+
+    window.editarUsuario = (id, nombre, email, laboratorio) => {
+      document.getElementById("nombre").value = nombre;
+      document.getElementById("email").value = email;
+      document.getElementById("laboratorio").value = laboratorio;
+      document.getElementById("agregarBtn").innerText = "Actualizar Usuario";
+      document.getElementById("regresarBtn").classList.remove("hidden");
+      document.getElementById("formTitulo").innerText = "Editar Usuario";
+      usuarioEditandoId = id;
+    };
+
+    window.eliminarUsuario = async (id) => {
+      if (confirm("¿Seguro que deseas eliminar este usuario?")) {
+        await deleteDoc(doc(db, "usuarios", id));
+        alert("Usuario eliminado");
+        cargarUsuarios();
+      }
+    };
+
+    document.getElementById("regresarBtn").addEventListener("click", () => {
+      limpiarFormulario();
+      document.getElementById("formTitulo").innerText = "Agregar Usuario";
+      document.getElementById("agregarBtn").innerText = "Agregar Usuario";
+      document.getElementById("regresarBtn").classList.add("hidden");
+      usuarioEditandoId = null;
+    });
+
+    function limpiarFormulario() {
+      document.getElementById("nombre").value = "";
+      document.getElementById("email").value = "";
+      document.getElementById("password").value = "";
+      document.getElementById("laboratorio").value = "";
+    }
+
+    cargarUsuarios();
+  </script>
+</body>
+</html>

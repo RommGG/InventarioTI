@@ -1,0 +1,440 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link rel="icon" type="image/png" href="images/logo.jpg">
+  <title>Bienes Asignados</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+</head>
+<script>
+  const initialUserDataBA = localStorage.getItem('user');
+  if (!initialUserDataBA) {
+    window.location.href = 'login.html';
+  } else {
+    const user = JSON.parse(initialUserDataBA);
+    if (user.nombre !== 'admin') {
+
+    }
+  }
+</script>
+
+<body class="bg-light text-dark" style="display: none;">
+  <div class="position-relative">
+    <div class="position-absolute top-0 start-0 p-3">
+      <h1 class="text-success fw-bold fs-3 m-0">Inventario de bienes TI</h1>
+    </div>
+    <div class="position-absolute top-0 end-0 p-3"><img src="images/logo.jpg" alt="Logo"
+        style="width: 60px; height: 60px; object-fit: contain; border-radius: 10px;"></div>
+  </div>
+  <br><br><br>
+  <div class="container-fluid px-4 py-4">
+    <h2 class="text-center mb-4">Bienes Asignados</h2>
+    <div class="mb-3 text-center"><input type="text" id="searchInput" class="form-control w-75 mx-auto"
+        placeholder="Buscar en todos los campos..."></div>
+    <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap">
+      <div>
+        <a href="administrarUsuarios.html" class="btn btn-success me-2 mb-2">Admin. Usuarios</a>
+        <a href="agregarBienes.html" class="btn btn-warning me-2 mb-2">Agregar Bien</a>
+        <a href="agregarBienesExcel.html" class="btn btn-secondary me-2 mb-2">Agregar desde Excel</a>
+      </div>
+      <div>
+        <a href="Historial.html" class="btn btn-dark me-2 mb-2">Ver Historial Cambios</a>
+        <button id="cerrarSesionBtn" class="btn btn-danger mb-2">Cerrar Sesión</button>
+      </div>
+    </div>
+    <div class="mb-3 text-center">
+      <label for="sortField" class="form-label">Ordenar por:</label>
+      <select id="sortField" class="form-select w-50 mx-auto">
+        <option value="">Sin ordenar</option>
+        <option value="laboratorio">Laboratorio</option>
+        <option value="descripcion">Descripción</option>
+        <option value="fecha">Fecha del Bien</option>
+        <option value="marca">Marca</option>
+        <option value="usuario_responsable">Usuario Responsable</option>
+      </select>
+    </div>
+    <div class="table-responsive" style="max-height: 70vh;">
+      <table class="table table-bordered table-hover align-middle text-center">
+        <thead class="table-success">
+          <tr>
+            <th>Lab</th>
+            <th>Desc.</th>
+            <th>Marca</th>
+            <th>Serie</th>
+            <th>Estado</th>
+            <th>U. Resp.</th>
+            <th>N. Etiq.</th>
+            <th>F. Bien</th>
+            <th class="text-primary">Mov.</th>
+            <th class="text-primary">Á. Origen</th>
+            <th class="text-primary">Á. Destino</th>
+            <th class="text-primary">F. Mov.</th>
+            <th class="text-primary">Autorizó</th>
+            <th>Acciones</th>
+          </tr>
+        </thead>
+        <tbody id="bienesTable">
+          <tr>
+            <td colspan="14">Cargando...</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div id="editModal" class="modal fade" tabindex="-1">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title">Editar Bien</h5><button type="button" class="btn-close" data-bs-dismiss="modal"
+            aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+          <form id="editForm">
+            <input type="hidden" id="editId">
+            <div class="row g-3">
+              <div class="col-md-6"><label>Laboratorio:</label><input type="text" class="form-control"
+                  id="editLaboratorio" required></div>
+              <div class="col-md-6"><label>Descripción:</label><input type="text" class="form-control"
+                  id="editDescripcion" required></div>
+              <div class="col-md-6"><label>Marca:</label><input type="text" class="form-control" id="editMarca"></div>
+              <div class="col-md-6"><label>Color:</label><input type="text" class="form-control" id="editColor"
+                  required></div>
+              <div class="col-md-6"><label>Material:</label><input type="text" class="form-control" id="editMaterial">
+              </div>
+              <div class="col-md-6"><label>Serie:</label><input type="text" class="form-control" id="editSerie"></div>
+              <div class="col-md-6"><label>Estado:</label><select class="form-select" id="editEstado" required>
+                  <option value="Bueno">Bueno</option>
+                  <option value="Regular">Regular</option>
+                  <option value="Malo">Malo</option>
+                </select></div>
+              <div class="col-md-6"><label>Observaciones:</label><input type="text" class="form-control"
+                  id="editObservaciones"></div>
+              <div class="col-md-6"><label>Usuario Responsable:</label><input type="text" class="form-control"
+                  id="editUsuarioResponsable" required></div>
+              <div class="col-md-6"><label>No. Etiqueta:</label><input type="text" class="form-control"
+                  id="editNoEtiqueta" required></div>
+              <div class="col-md-6"><label>Fecha del bien:</label><input type="date" class="form-control" id="editFecha"
+                  required></div>
+              <hr class="my-3">
+              <h6 class="text-primary">Información de Movimiento</h6>
+              <div class="col-md-6"><label>Movimiento:</label><select class="form-select" id="editMovimiento">
+                  <option value="NA">NA</option>
+                  <option value="Traspaso">Traspaso</option>
+                  <option value="Rotacion">Rotacion</option>
+                  <option value="Baja">Baja</option>
+                </select></div>
+              <div class="col-md-6"><label>Área de origen:</label><input type="text" class="form-control"
+                  id="editAreaOrigen"></div>
+              <div class="col-md-6"><label>Área destino:</label><input type="text" class="form-control"
+                  id="editAreaDestino"></div>
+              <div class="col-md-6"><label>Fecha del movimiento:</label><input type="date" class="form-control"
+                  id="editFechaMovimiento"></div>
+              <div class="col-md-12"><label>Autorizó el movimiento:</label><input type="text" class="form-control"
+                  id="editAutorizoMovimiento"></div>
+            </div>
+          </form>
+        </div>
+        <div class="modal-footer"><button type="button" class="btn btn-secondary"
+            data-bs-dismiss="modal">Cancelar</button><button type="button" class="btn btn-primary"
+            onclick="guardarCambios()">Guardar Cambios</button></div>
+      </div>
+    </div>
+  </div>
+
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.10.0/firebase-app.js";
+    import { getFirestore, collection, getDocs, doc, updateDoc, deleteDoc, setDoc, getDoc, Timestamp, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.10.0/firebase-firestore.js";
+    // No direct Bootstrap import here if relying on the global from bootstrap.bundle.js
+
+    const firebaseConfig = {
+      apiKey: "AIzaSyBqLeHhOIlDrHCDqovuvmX5fEQIDccC_UI",
+      authDomain: "inventario-login-4137e.firebaseapp.com",
+      projectId: "inventario-login-4137e",
+      storageBucket: "inventario-login-4137e.appspot.com",
+      messagingSenderId: "695847381869",
+      appId: "1:695847381869:web:33401d4af8b3237842c864",
+      measurementId: "G-NVS9QSLHNH"
+    };
+    const app = initializeApp(firebaseConfig);
+    const db = getFirestore(app);
+
+    let todosLosBienes = [];
+    let bienesMostrados = [];
+    let editModalInstance = null; // Initialize to null
+    let administradoresDeLaboratorio = [];
+
+
+    async function fetchBienes() {
+      const bienesTableBody = document.getElementById("bienesTable");
+      bienesTableBody.innerHTML = '<tr><td colspan="14">Cargando inventario...</td></tr>';
+      try {
+        const bienesSnapshot = await getDocs(collection(db, "mobiliario"));
+        todosLosBienes = bienesSnapshot.docs.map(docSnap => ({ id: docSnap.id, ...docSnap.data() }));
+
+        // Cargar la información de todos los usuarios que tienen el campo 'laboratorio'
+        const usuariosSnapshot = await getDocs(collection(db, "usuarios"));
+        administradoresDeLaboratorio = usuariosSnapshot.docs.filter(docSnap => docSnap.data().laboratorio && docSnap.data().laboratorio.length > 0)
+          .map(docSnap => ({
+            nombre: docSnap.data().nombre,
+            laboratorios: Array.isArray(docSnap.data().laboratorio) ? docSnap.data().laboratorio.map(lab => String(lab)) : [String(docSnap.data().laboratorio)] // Asegurar que los laboratorios sean strings para comparar
+          }));
+
+        filterAndSortBienes();
+      } catch (error) {
+        console.error("Error al obtener los bienes o usuarios:", error);
+        bienesTableBody.innerHTML = '<tr><td colspan="14" class="text-danger">Error al cargar. Revise la consola.</td></tr>';
+      }
+    }
+
+    function filterAndSortBienes() {
+      let bienesFiltrados = [...todosLosBienes];
+      const searchTerm = document.getElementById("searchInput").value.toLowerCase();
+      if (searchTerm) {
+        bienesFiltrados = bienesFiltrados.filter(bien =>
+          Object.values(bien).some(val => String(val).toLowerCase().includes(searchTerm))
+        );
+      }
+      const sortField = document.getElementById("sortField").value;
+      if (sortField) {
+        bienesFiltrados.sort((a, b) => {
+          const valA = (a[sortField] || "").toString().toLowerCase();
+          const valB = (b[sortField] || "").toString().toLowerCase();
+          if ((sortField === "fecha" || sortField === "fecha_movimiento") && valA && valB) {
+            try { // Add try-catch for invalid date strings
+              return new Date(valA) - new Date(valB);
+            } catch (e) { return 0; }
+          }
+          return valA.localeCompare(valB);
+        });
+      }
+      bienesMostrados = bienesFiltrados;
+      renderBienes();
+    }
+
+    function renderBienes() {
+  const bienesTableBody = document.getElementById("bienesTable");
+  if (bienesMostrados.length === 0) {
+    bienesTableBody.innerHTML = '<tr><td colspan="14">No se encontraron bienes.</td></tr>';
+    return;
+  }
+
+  bienesTableBody.innerHTML = bienesMostrados.map(bien => {
+    const fechaBien = bien.fecha ? new Date(bien.fecha + 'T00:00:00').toLocaleDateString() : "N/A";
+    const fechaMov = bien.fecha_movimiento ? new Date(bien.fecha_movimiento + 'T00:00:00').toLocaleDateString() : "NA";
+    let usuarioResponsableMostrar = bien.usuario_responsable || "N/A";
+    const laboratorioDelBien = String(bien.laboratorio); // Asegurar que el laboratorio del bien sea string
+
+    // Buscar un administrador para el laboratorio del bien
+    const administradorEncontrado = administradoresDeLaboratorio.find(admin =>
+      admin.laboratorios.includes(laboratorioDelBien)
+    );
+
+    if (administradorEncontrado) {
+      usuarioResponsableMostrar = administradorEncontrado.nombre;
+    }
+
+    return `
+      <tr>
+        <td>${bien.laboratorio || "N/A"}</td>
+        <td>${bien.descripcion || "N/A"}</td>
+        <td>${bien.marca || "N/A"}</td>
+        <td>${bien.serie || "N/A"}</td>
+        <td>${bien.estado || "N/A"}</td>
+        <td>${usuarioResponsableMostrar}</td>
+        <td>${bien.no_etiqueta || "N/A"}</td>
+        <td>${fechaBien}</td>
+        <td>${bien.movimiento || "NA"}</td>
+        <td>${bien.area_origen || "NA"}</td>
+        <td>${bien.area_destino || "NA"}</td>
+        <td>${fechaMov}</td>
+        <td>${bien.autorizo_movimiento || "NA"}</td>
+        <td>
+          <button class="btn btn-sm btn-info me-1" onclick="abrirModalEditar('${bien.id}')">Editar</button>
+          <button class="btn btn-sm btn-danger" onclick="eliminarBienConfirm('${bien.id}')">Eliminar</button>
+        </td>
+      </tr>`;
+  }).join('');
+}
+    window.abrirModalEditar = function (id) {
+      const bien = todosLosBienes.find(b => b.id === id);
+      if (!bien) { alert("Error: Bien no encontrado."); return; }
+      document.getElementById("editId").value = bien.id;
+      document.getElementById("editLaboratorio").value = bien.laboratorio || "";
+      document.getElementById("editDescripcion").value = bien.descripcion || "";
+      document.getElementById("editMarca").value = bien.marca || "";
+      document.getElementById("editColor").value = bien.color || "";
+      document.getElementById("editMaterial").value = bien.material || "";
+      document.getElementById("editSerie").value = bien.serie || "";
+      document.getElementById("editEstado").value = bien.estado || "Bueno";
+      document.getElementById("editObservaciones").value = bien.observaciones || "";
+      document.getElementById("editUsuarioResponsable").value = bien.usuario_responsable || "";
+      document.getElementById("editNoEtiqueta").value = bien.no_etiqueta || "";
+      document.getElementById("editFecha").value = bien.fecha || ""; // Should be YYYY-MM-DD
+      document.getElementById("editMovimiento").value = bien.movimiento || "NA";
+      document.getElementById("editAreaOrigen").value = bien.area_origen || "";
+      document.getElementById("editAreaDestino").value = bien.area_destino || "";
+      document.getElementById("editFechaMovimiento").value = bien.fecha_movimiento || ""; // Should be YYYY-MM-DD
+      document.getElementById("editAutorizoMovimiento").value = bien.autorizo_movimiento || "";
+
+      if (editModalInstance) {
+        editModalInstance.show();
+      } else {
+        console.warn("Modal instance not ready when trying to show.");
+        // Fallback or re-initialize if necessary, though DOMContentLoaded should handle it.
+        if (typeof bootstrap !== 'undefined' && bootstrap.Modal) {
+          editModalInstance = new bootstrap.Modal(document.getElementById('editModal'));
+          editModalInstance.show();
+        } else {
+          alert("No se puede abrir la ventana de edición. Bootstrap no está cargado.");
+        }
+      }
+    }
+
+    window.guardarCambios = async function () {
+      if (!editModalInstance) {
+        alert("Error: La instancia del modal no está lista para guardar.");
+        return;
+      }
+      const bienId = document.getElementById("editId").value;
+      const bienDataToUpdate = {
+        laboratorio: document.getElementById("editLaboratorio").value.trim(),
+        descripcion: document.getElementById("editDescripcion").value.trim(),
+        marca: document.getElementById("editMarca").value.trim() || null,
+        color: document.getElementById("editColor").value.trim(),
+        material: document.getElementById("editMaterial").value.trim() || null,
+        serie: document.getElementById("editSerie").value.trim() || null,
+        estado: document.getElementById("editEstado").value,
+        observaciones: document.getElementById("editObservaciones").value.trim() || null,
+        usuario_responsable: document.getElementById("editUsuarioResponsable").value.trim(),
+        no_etiqueta: document.getElementById("editNoEtiqueta").value.trim(),
+        fecha: document.getElementById("editFecha").value,
+        movimiento: document.getElementById("editMovimiento").value,
+        area_origen: document.getElementById("editAreaOrigen").value.trim() || null,
+        area_destino: document.getElementById("editAreaDestino").value.trim() || null,
+        fecha_movimiento: document.getElementById("editFechaMovimiento").value || null,
+        autorizo_movimiento: document.getElementById("editAutorizoMovimiento").value.trim() || null,
+        ultima_modificacion: serverTimestamp()
+      };
+
+      try {
+        const bienRef = doc(db, "mobiliario", bienId);
+        await updateDoc(bienRef, bienDataToUpdate);
+
+        const userPerformingAction = JSON.parse(localStorage.getItem("user"))?.nombre || "Sistema";
+        const historialEntry = {
+          ...bienDataToUpdate,
+          original_id: bienId,
+          tipo_cambio: "EDICION",
+          descripcion_cambio: `Bien '${bienDataToUpdate.descripcion}' modificado por ${userPerformingAction}.`,
+          realizado_por: userPerformingAction,
+          fecha_evento_historial: serverTimestamp()
+        };
+        const historialDocId = `${bienId}_${Date.now()}_EDICION`;
+        await setDoc(doc(db, "historial", historialDocId), historialEntry);
+
+        alert("Bien actualizado y cambio registrado en historial.");
+        editModalInstance.hide(); // Use the instance to hide
+        fetchBienes();
+      } catch (error) {
+        console.error("Error al guardar cambios:", error);
+        alert("Error: " + error.message);
+      }
+    }
+
+    window.eliminarBienConfirm = async function (id) {
+      if (!confirm("¿Estás seguro de eliminar este bien? Esta acción es irreversible desde esta vista.")) return;
+
+      const bienRef = doc(db, "mobiliario", id);
+      try {
+        const bienSnap = await getDoc(bienRef);
+        if (!bienSnap.exists()) {
+          alert("Error: El bien ya no existe.");
+          fetchBienes(); return;
+        }
+        const bienDataToDelete = bienSnap.data();
+
+        const userPerformingAction = JSON.parse(localStorage.getItem("user"))?.nombre || "Sistema";
+        const historialEntry = {
+          ...bienDataToDelete,
+          original_id: id,
+          tipo_cambio: "BAJA",
+          descripcion_cambio: `Bien '${bienDataToDelete.descripcion}' eliminado por ${userPerformingAction}.`,
+          realizado_por: userPerformingAction,
+          fecha_evento_historial: serverTimestamp()
+        };
+        const historialDocId = `${id}_${Date.now()}_BAJA`;
+        await setDoc(doc(db, "historial", historialDocId), historialEntry);
+
+        await deleteDoc(bienRef);
+
+        alert("Bien eliminado y registrado en historial.");
+        fetchBienes();
+      } catch (error) {
+        console.error("Error al eliminar bien:", error);
+        alert("Error: " + error.message);
+      }
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+      const user = JSON.parse(localStorage.getItem('user'));
+      let isAdmin = false;
+      if (user && user.nombre) {
+        if (user.nombre === 'admin') {
+          isAdmin = true;
+          document.body.style.display = 'block';
+        } else {
+          // If not admin, decide what to do.
+          // For example, redirect or hide admin-specific controls.
+          // For now, let's assume they can view but not get modal functionality
+          // or admin buttons if the page is shared.
+          // If the page is strictly admin, the inline script should have redirected.
+          console.warn("Non-admin user on admin page. Modal functionality might be limited.");
+          document.body.style.display = 'block'; // Still show body for viewing
+          // Potentially hide admin buttons here if the page is shared
+          // document.querySelectorAll('.admin-only-button').forEach(btn => btn.style.display = 'none');
+        }
+      } else {
+        window.location.href = 'login.html'; // Fallback
+        return; // Don't proceed if no user
+      }
+
+      // Initialize Bootstrap Modal only if it's defined
+      // This should be after document.body.style.display = 'block' to ensure modal elements are visible
+      if (typeof bootstrap !== 'undefined' && bootstrap.Modal) {
+        try {
+          const modalElement = document.getElementById('editModal');
+          if (modalElement) {
+            editModalInstance = new bootstrap.Modal(modalElement);
+          } else {
+            console.error("Modal HTML element with ID 'editModal' not found.");
+          }
+        } catch (e) {
+          console.error("Error initializing Bootstrap Modal:", e);
+          // alert("Hubo un problema al inicializar la ventana de edición.");
+        }
+      } else {
+        console.error("Bootstrap Modal is not defined. Bootstrap JS might not be loaded correctly or in time.");
+        // alert("Funcionalidad de edición no disponible. Bootstrap no cargó correctamente.");
+      }
+
+      fetchBienes(); // Fetch data regardless of modal init for viewing
+      document.getElementById('searchInput').addEventListener('input', filterAndSortBienes);
+      document.getElementById('sortField').addEventListener('change', filterAndSortBienes);
+
+      const cerrarSesionButton = document.getElementById('cerrarSesionBtn');
+      if (cerrarSesionButton) {
+        cerrarSesionButton.addEventListener('click', () => {
+          localStorage.removeItem('user');
+          window.location.href = 'login.html';
+        });
+      }
+    });
+  </script>
+  <!-- Ensure this is the Bootstrap Bundle JS and it's loaded -->
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+
+</html>
